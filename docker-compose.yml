@@ -1,0 +1,138 @@
+services:
+  web:
+    image: dockerweb
+    container_name: dockerweb
+    hostname: dockerweb
+    tty: true
+    build:
+      context: .
+      target: web
+      args:
+        ver1c: 8.3.20.1710
+    volumes:
+       - ./html:/var/www/html
+       - ./conf.d:/etc/httpd/conf.d
+    #ports:
+    #  - "81:80"
+    #  - "444:443"
+    labels:
+      - traefik.enable=true
+        # router dockerweb
+      - traefik.http.routers.dockerweb.entrypoints=http
+      - traefik.http.routers.dockerweb.rule=Host(`docker1c.doamin.com`)
+        # router dockerwebs
+      - traefik.http.routers.dockerwebs.entrypoints=https
+      - traefik.http.routers.dockerwebs.rule=Host(`docker1c.doamin.com`)
+      - traefik.http.routers.dockerwebs.tls=true
+      - traefik.http.routers.dockerwebs.tls.certresolver=letsEncrypt
+        # service dockerweb-service
+      - traefik.http.services.dockerweb-service.loadbalancer.server.port=80
+        # redirect to https
+      - traefik.http.middlewares.http-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.http-https.redirectscheme.permanent=true
+      - traefik.http.routers.dockerweb.middlewares=http-https
+        # echo $(htpasswd -nb user password) | sed -e s/\\$/\\$\\$/g
+      - traefik.http.middlewares.ae-auth.basicauth.users=admin:$$apr1$$M4FznZqL$$dPp1rY0Mvlloam5PDVeU01
+      - traefik.http.routers.dockerwebs.middlewares=ae-auth
+      - traefik.http.routers.dockerweb.middlewares=ae-auth
+      
+  db:
+    image: dockerpg
+    container_name: dockerpg
+    hostname: dockerpg
+    tty: true
+    build:
+      context: .
+      target: db
+      args:
+        verpg: 13
+        passpg: 12345
+    volumes:
+       - ./data:/var/lib/pgsql/13/data
+    # ports:
+    #  - "5432:5432"
+
+  app:
+    image: docker1c
+    container_name: docker1c
+    hostname: docker1c
+    tty: true
+    build:
+      target: app
+      context: .
+      args:
+        ver1c: 8.3.20.1710
+    depends_on:
+      - db
+    volumes:
+      - ./usr1cv8:/home/usr1cv8
+      - ./1c:/var/log/1c
+    # ports:
+    #   - "1540-1541:1540-1541"
+    #   - "1560-1591:1560-1591"
+    labels:
+      - traefik.enable=true
+      - traefik.tcp.routers.docker1c1540.rule=HostSNI(`*`)
+      - traefik.tcp.routers.docker1c1540.entrypoints=c1540
+      - traefik.tcp.routers.docker1c1540.service=docker1c1540-service
+      - traefik.tcp.services.docker1c1540-service.loadbalancer.server.port=1540
+
+      - traefik.tcp.routers.docker1c1541.rule=HostSNI(`*`)
+      - traefik.tcp.routers.docker1c1541.entrypoints=c1541
+      - traefik.tcp.routers.docker1c1541.service=docker1c1541-service
+      - traefik.tcp.services.docker1c1541-service.loadbalancer.server.port=1541
+
+  traefik:
+    image: traefik
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 80:80
+      - 443:443
+      - 1540:1540
+      - 9090:9090
+      - 9000:9000
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ae/traefik.yml:/traefik.yml:ro
+      - ./ae/custom/:/custom/:ro
+      - ./ae/acme.json:/acme.json
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ae.entrypoints=https
+      - traefik.http.routers.ae.rule=Host(`ku.doamin.com`)
+      - traefik.http.routers.ae.tls=true
+      - traefik.http.routers.ae.tls.certresolver=letsEncrypt
+      - traefik.http.routers.ae.service=api@internal
+      - traefik.http.services.dashboard.loadbalancer.server.port=888
+
+  metrics:
+    image: prom/prometheus
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prom/prometheus.yml:/etc/prometheus/prometheus.yml
+    #ports:
+    #  - 9090:9090
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prom.entrypoints=prom
+      - traefik.http.routers.prom.rule=Host(`ku.doamin.com`)
+      #- traefik.http.routers.prom.tls=true
+      #- traefik.http.routers.prom.tls.certresolver=letsEncrypt
+      - traefik.http.routers.prom.service=prom-service
+      - traefik.http.services.prom-service.loadbalancer.server.port=9090
+
+  graf:
+    image: grafana/grafana
+    container_name: grafana
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.graf.entrypoints=graf
+      - traefik.http.routers.graf.rule=Host(`ku.doamin.com`)
+      - traefik.http.routers.graf.service=graf-service
+      - traefik.http.services.graf-service.loadbalancer.server.port=3000

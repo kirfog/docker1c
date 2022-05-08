@@ -1,0 +1,27 @@
+http:
+  routers:
+    file_router:
+      entryPoints:
+        - http
+      service: file_service
+      rule: Host(`192.168.111.1`)
+      middlewares:
+        - staticmw
+    file_router_s:
+      entryPoints:
+        - https
+      service: file_service
+      rule: Host(`192.168.111.1`)
+      tls:
+        certResolver: letsEncrypt
+  services:
+    file_service:
+      loadBalancer:
+        servers:
+        - url: https://www.doamin.com
+      #  passHostHeader: true
+  middlewares:
+    staticmw:
+      redirectScheme:
+        scheme: https
+        permanent: false
